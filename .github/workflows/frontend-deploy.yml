@@ -1,0 +1,68 @@
+name: Deploy Frontend to S3 + CloudFront
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-deploy.yml"
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write     # OIDC 필수
+  contents: read
+
+env:
+  AWS_REGION: ap-northeast-2
+  S3_BUCKET: olive-live-frontend-dev-065227443107
+  CF_DIST_ID: E1MGBIG68DNKUW
+  FRONTEND_DIR: frontend
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ${{ env.FRONTEND_DIR }}
+        run: npm ci
+
+      - name: Build
+        working-directory: ${{ env.FRONTEND_DIR }}
+        run: npm run build
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::065227443107:role/olive-live-frontend-deploy-role
+          aws-region: ${{ env.AWS_REGION }}
+
+      # 1) 해시된 정적 자산은 길게 캐시해도 안전 (Vite 기본이 해시 파일명이라)
+      - name: Sync assets to S3
+        run: |
+          aws s3 sync "${{ env.FRONTEND_DIR }}/dist" "s3://${{ env.S3_BUCKET }}" \
+            --delete \
+            --exclude "index.html"
+
+      # 2) index.html은 "즉시 갱신"되는 게 좋음 (SPA는 index가 엔트리라 캐시 문제 흔함)
+      - name: Upload index.html (no-cache)
+        run: |
+          aws s3 cp "${{ env.FRONTEND_DIR }}/dist/index.html" "s3://${{ env.S3_BUCKET }}/index.html" \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "text/html; charset=utf-8"
+
+      - name: CloudFront invalidation
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ env.CF_DIST_ID }}" \
+            --paths "/*"
