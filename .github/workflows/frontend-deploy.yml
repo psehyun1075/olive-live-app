@@ -37,8 +37,27 @@ jobs:
         working-directory: ${{ env.FRONTEND_DIR }}
         run: npm ci
 
+      # ✅ (핵심) Build 단계에 VITE_* 주입
       - name: Build
         working-directory: ${{ env.FRONTEND_DIR }}
+        env:
+          # ===== API =====
+          VITE_API_BASE_URL: https://d21hmdoocq4tl0.cloudfront.net
+          VITE_ORIGIN_HEADER_NAME: x-olive-origin
+          VITE_ORIGIN_HEADER_VALUE: olive-dev-only-9f3a2c
+
+          # ===== Datadog RUM =====
+          VITE_DD_RUM_ENABLED: "true"
+          VITE_DD_SITE: ap1.datadoghq.com
+          VITE_DD_ENV: dev
+          VITE_DD_SERVICE: olive-live-frontend
+          VITE_DD_APPLICATION_ID: 7c7f1c1b-4000-4fcf-90d7-dfa7be4f5134
+          VITE_DD_CLIENT_TOKEN: pub68fd01f192f125059c29e4d2af26a8ec
+          VITE_DD_SESSION_SAMPLE_RATE: "100"
+          VITE_DD_SESSION_REPLAY_SAMPLE_RATE: "20"
+
+          # 버전
+          VITE_APP_VERSION: ${{ github.sha }}
         run: npm run build
 
       - name: Configure AWS credentials (OIDC)
@@ -47,14 +66,14 @@ jobs:
           role-to-assume: arn:aws:iam::065227443107:role/olive-live-frontend-deploy-role
           aws-region: ${{ env.AWS_REGION }}
 
-      # 1) 해시된 정적 자산은 길게 캐시해도 안전 (Vite 기본이 해시 파일명이라)
+      # 1) 해시된 정적 자산은 길게 캐시해도 안전
       - name: Sync assets to S3
         run: |
           aws s3 sync "${{ env.FRONTEND_DIR }}/dist" "s3://${{ env.S3_BUCKET }}" \
             --delete \
             --exclude "index.html"
 
-      # 2) index.html은 "즉시 갱신"되는 게 좋음 (SPA는 index가 엔트리라 캐시 문제 흔함)
+      # 2) index.html은 no-cache
       - name: Upload index.html (no-cache)
         run: |
           aws s3 cp "${{ env.FRONTEND_DIR }}/dist/index.html" "s3://${{ env.S3_BUCKET }}/index.html" \
