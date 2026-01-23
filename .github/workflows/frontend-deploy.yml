@@ -9,7 +9,7 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  id-token: write     # OIDC 필수
+  id-token: write
   contents: read
 
 env:
@@ -17,6 +17,11 @@ env:
   S3_BUCKET: olive-live-frontend-dev-065227443107
   CF_DIST_ID: E1MGBIG68DNKUW
   FRONTEND_DIR: frontend
+
+  # Datadog meta (sourcemap 업로드에 사용)
+  DD_SERVICE: olive-live-frontend
+  DD_ENV: dev
+  CF_DOMAIN: d21hmdoocq4tl0.cloudfront.net
 
 jobs:
   deploy:
@@ -37,20 +42,19 @@ jobs:
         working-directory: ${{ env.FRONTEND_DIR }}
         run: npm ci
 
-      # ✅ (핵심) Build 단계에 VITE_* 주입
       - name: Build
         working-directory: ${{ env.FRONTEND_DIR }}
         env:
           # ===== API =====
-          VITE_API_BASE_URL: https://d21hmdoocq4tl0.cloudfront.net
+          VITE_API_BASE_URL: https://${{ env.CF_DOMAIN }}
           VITE_ORIGIN_HEADER_NAME: x-olive-origin
           VITE_ORIGIN_HEADER_VALUE: olive-dev-only-9f3a2c
 
           # ===== Datadog RUM =====
           VITE_DD_RUM_ENABLED: "true"
           VITE_DD_SITE: ap1.datadoghq.com
-          VITE_DD_ENV: dev
-          VITE_DD_SERVICE: olive-live-frontend
+          VITE_DD_ENV: ${{ env.DD_ENV }}
+          VITE_DD_SERVICE: ${{ env.DD_SERVICE }}
           VITE_DD_APPLICATION_ID: 7c7f1c1b-4000-4fcf-90d7-dfa7be4f5134
           VITE_DD_CLIENT_TOKEN: pub68fd01f192f125059c29e4d2af26a8ec
           VITE_DD_SESSION_SAMPLE_RATE: "100"
@@ -60,20 +64,31 @@ jobs:
           VITE_APP_VERSION: ${{ github.sha }}
         run: npm run build
 
+      # ✅ Sourcemap 업로드 (AWS 자격증명 필요 없음 / Build 직후 실행)
+      - name: Upload sourcemaps to Datadog
+        working-directory: ${{ env.FRONTEND_DIR }}
+        env:
+          DATADOG_API_KEY: ${{ secrets.DD_API_KEY }}
+          DATADOG_SITE: ${{ secrets.DD_SITE }} # ap1.datadoghq.com
+        run: |
+          npm i -D @datadog/datadog-ci
+          npx datadog-ci sourcemaps upload dist/assets \
+            --service="${{ env.DD_SERVICE }}" \
+            --release-version="${{ github.sha }}" \
+            --minified-path-prefix="https://${{ env.CF_DOMAIN }}/assets"
+
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::065227443107:role/olive-live-frontend-deploy-role
           aws-region: ${{ env.AWS_REGION }}
 
-      # 1) 해시된 정적 자산은 길게 캐시해도 안전
       - name: Sync assets to S3
         run: |
           aws s3 sync "${{ env.FRONTEND_DIR }}/dist" "s3://${{ env.S3_BUCKET }}" \
             --delete \
             --exclude "index.html"
 
-      # 2) index.html은 no-cache
       - name: Upload index.html (no-cache)
         run: |
           aws s3 cp "${{ env.FRONTEND_DIR }}/dist/index.html" "s3://${{ env.S3_BUCKET }}/index.html" \

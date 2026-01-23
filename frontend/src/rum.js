@@ -1,8 +1,9 @@
+// rum.js
 import { datadogRum } from "@datadog/browser-rum";
-import { reactPlugin } from "@datadog/browser-rum-react";
 
 export function initRum() {
-  const enabled = String(import.meta.env.VITE_DD_RUM_ENABLED || "false") === "true";
+  const enabled = String(import.meta.env.VITE_DD_RUM_ENABLED || "")
+    .toLowerCase() === "true";
   if (!enabled) return;
 
   const applicationId = import.meta.env.VITE_DD_APPLICATION_ID;
@@ -18,7 +19,16 @@ export function initRum() {
   const service = import.meta.env.VITE_DD_SERVICE || "olive-live-frontend";
   const version = import.meta.env.VITE_APP_VERSION || "dev";
 
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "";
+  // 네가 API를 CF로 호출한다면 보통 https://d21hmdoocq4tl0.cloudfront.net
+  const apiBase = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+
+  // /api 로 나가는 요청만 trace header를 붙이도록 제한 (권장)
+  const apiTracingPattern = apiBase
+    ? new RegExp(`^${escapeRegExp(apiBase)}\\/api`)
+    : /^https:\/\/d21hmdoocq4tl0\.cloudfront\.net\/api/;
+
+  const sessionSampleRate = Number(import.meta.env.VITE_DD_SESSION_SAMPLE_RATE ?? 100);
+  const sessionReplaySampleRate = Number(import.meta.env.VITE_DD_SESSION_REPLAY_SAMPLE_RATE ?? 0);
 
   datadogRum.init({
     applicationId,
@@ -28,27 +38,27 @@ export function initRum() {
     env,
     version,
 
-    // 기본 수집
-    trackInteractions: true,
+    // ✅ 여기가 네 기존 코드에서 제일 큰 차이: 옵션 이름이 정확해야 함
+    trackUserInteractions: true,
     trackResources: true,
     trackLongTasks: true,
 
-    // 개인정보 마스킹(데모 안전)
     defaultPrivacyLevel: "mask-user-input",
 
-    // 샘플링
-    sessionSampleRate: Number(import.meta.env.VITE_DD_SESSION_SAMPLE_RATE || 100),
-    sessionReplaySampleRate: Number(import.meta.env.VITE_DD_SESSION_REPLAY_SAMPLE_RATE || 20),
+    sessionSampleRate,
+    sessionReplaySampleRate,
 
-    // APM 연동(프론트에서 trace header를 붙여 백엔드 트레이스와 연결)
-    // CloudFront/API 도메인이 CORS 허용 및 trace header 허용돼야 완벽히 연결됨
-    allowedTracingUrls: apiBaseUrl ? [apiBaseUrl] : [],
-    traceSampleRate: 100,
-
-    // React 에러/라우팅 헬퍼
-    plugins: [reactPlugin({ router: false })],
+    // ✅ RUM ↔ APM 연동
+    allowedTracingUrls: [apiTracingPattern],
+    tracingSampleRate: 100,
   });
 
-  // 초기 뷰 이름(원하면 "Home" 같은 걸로)
-  datadogRum.startSessionReplayRecording();
+  // replay는 env가 0이면 시작 안 함
+  if (sessionReplaySampleRate > 0) {
+    datadogRum.startSessionReplayRecording();
+  }
+}
+
+function escapeRegExp(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
