@@ -86,7 +86,10 @@ export default function App() {
                 placeholder="ex) user-123-order-001"
               />
               <button
-                onClick={() => sendOrder()}
+                // ✅ Sourcemap 테스트용: 클릭 시 프론트 에러 1회 발생
+                onClick={() => {
+                  throw new Error("Sourcemap test error");
+                }}
                 disabled={loading || !orderId}
                 className="px-4 py-2 rounded-xl bg-black text-white disabled:opacity-50"
               >
