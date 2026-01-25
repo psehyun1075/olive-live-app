@@ -10,7 +10,6 @@ import OrderList from "./components/OrderList.jsx";
 import { createOrder, getApiBase } from "./lib/api.js";
 
 export default function App() {
-  // base는 내부적으로 쓰되 화면엔 숨김(필요하면 디버그용으로만 사용)
   const apiBase = useMemo(() => getApiBase(), []);
 
   const [orderId, setOrderId] = useState("frontend-demo");
@@ -22,6 +21,9 @@ export default function App() {
   const [liveOpen, setLiveOpen] = useState(false);
   const [selectedLive, setSelectedLive] = useState(null);
 
+  // ✅ IVS Playback URL (Vite env로 주입)
+  const playbackUrl = import.meta.env.VITE_IVS_PLAYBACK_URL || "";
+
   async function sendOrder(nextOrderId) {
     const oid = nextOrderId ?? orderId;
     if (!oid) return;
@@ -30,7 +32,6 @@ export default function App() {
     setToast({ kind: "success", message: "" });
 
     try {
-      // apiBase는 createOrder 내부에서 사용. 화면엔 미노출.
       const data = await createOrder(oid, apiBase);
 
       setSentOrders((prev) => [{ ...data, sentAt: Date.now() }, ...prev].slice(0, 10));
@@ -113,6 +114,7 @@ export default function App() {
           setLiveOpen(false);
           onQuickOrder(p);
         }}
+        playbackUrl={playbackUrl}
       />
 
       <Toast

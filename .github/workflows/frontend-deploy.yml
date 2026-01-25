@@ -59,6 +59,9 @@ jobs:
           VITE_DD_CLIENT_TOKEN: pub68fd01f192f125059c29e4d2af26a8ec
           VITE_DD_SESSION_SAMPLE_RATE: "100"
           VITE_DD_SESSION_REPLAY_SAMPLE_RATE: "20"
+          
+          # ✅ IVS (추가)
+          VITE_IVS_PLAYBACK_URL: ${{ secrets.VITE_IVS_PLAYBACK_URL }}
 
           # 버전
           VITE_APP_VERSION: ${{ github.sha }}

@@ -1,4 +1,6 @@
-export default function LiveModal({ open, live, onClose, onOrder }) {
+import IvsPlayer from "./IvsPlayer.jsx";
+
+export default function LiveModal({ open, live, onClose, onOrder, playbackUrl }) {
   if (!open || !live) return null;
 
   return (
@@ -18,9 +20,8 @@ export default function LiveModal({ open, live, onClose, onOrder }) {
         </div>
 
         <div className="p-6 grid gap-4">
-          <div className="rounded-2xl bg-gray-100 h-64 flex items-center justify-center text-gray-400">
-            라이브 플레이어 영역(추후 IVS 삽입)
-          </div>
+          {/* ✅ IVS Player */}
+          <IvsPlayer playbackUrl={playbackUrl} />
 
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -34,6 +35,10 @@ export default function LiveModal({ open, live, onClose, onOrder }) {
               이 상품 주문하기
             </button>
           </div>
+        </div>
+
+        <div className="px-5 py-3 border-t text-xs text-gray-500">
+          OBS로 송출 중일 때만 재생됩니다. (채널이 LIVE여야 함)
         </div>
       </div>
     </div>

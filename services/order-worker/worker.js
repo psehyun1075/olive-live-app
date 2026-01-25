@@ -7,12 +7,21 @@ import {
   DeleteMessageCommand,
   ChangeMessageVisibilityCommand,
 } from "@aws-sdk/client-sqs";
+
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+
 import pg from "pg";
 
 const { Pool } = pg;
 
 const REGION = process.env.AWS_REGION || "ap-northeast-2";
 const QUEUE_URL = process.env.ORDER_QUEUE_URL;
+
+// DynamoDB serving counter
+const SERVING_COUNTER_TABLE = process.env.SERVING_COUNTER_TABLE;
+const SERVING_COUNTER_ID = process.env.SERVING_COUNTER_ID || "event-001";
+const SERVING_COUNTER_TTL_SECONDS = Number(process.env.SERVING_COUNTER_TTL_SECONDS || 86400);
 
 const DB_HOST = process.env.DB_HOST;
 const DB_PORT = Number(process.env.DB_PORT || 5432);
@@ -28,8 +37,15 @@ if (!DB_HOST || !DB_NAME || !DB_USER || !DB_PASSWORD) {
   console.error("ERROR: DB envs are missing (DB_HOST/DB_NAME/DB_USER/DB_PASSWORD)");
   process.exit(1);
 }
+if (!SERVING_COUNTER_TABLE) {
+  console.error("ERROR: SERVING_COUNTER_TABLE env is required");
+  process.exit(1);
+}
 
 const sqs = new SQSClient({ region: REGION });
+
+// DynamoDB Document client
+const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: REGION }));
 
 // Aurora PostgreSQL은 보통 SSL 강제인 경우가 많아서 데모는 이게 제일 간단
 const pool = new Pool({
@@ -53,6 +69,41 @@ const PROCESSING_DELAY_MS = Number(process.env.PROCESSING_DELAY_MS || 300);
 
 async function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * ✅ DynamoDB 원자 카운터 증가
+ * - value: if_not_exists(value, 0) + 1
+ * - updated_at: epoch seconds
+ * - expires_at(TTL): now + SERVING_COUNTER_TTL_SECONDS
+ * return: 증가된 value (Number)
+ */
+async function incrementServingCounter() {
+  const now = Math.floor(Date.now() / 1000);
+  const expiresAt = now + SERVING_COUNTER_TTL_SECONDS;
+
+  const res = await ddb.send(
+    new UpdateCommand({
+      TableName: SERVING_COUNTER_TABLE,
+      Key: { counter_id: SERVING_COUNTER_ID },
+      UpdateExpression:
+        "SET #v = if_not_exists(#v, :zero) + :inc, updated_at = :now, expires_at = :exp",
+      ExpressionAttributeNames: { "#v": "value" },
+      ExpressionAttributeValues: {
+        ":zero": 0,
+        ":inc": 1,
+        ":now": now,
+        ":exp": expiresAt,
+      },
+      ReturnValues: "ALL_NEW",
+    })
+  );
+
+  const newValue = res?.Attributes?.value;
+  if (typeof newValue !== "number") {
+    throw new Error(`Serving counter update returned invalid value: ${String(newValue)}`);
+  }
+  return newValue;
 }
 
 /**
@@ -137,15 +188,11 @@ async function markProcessed(orderId) {
 }
 
 /**
- * ✅ 핵심(1-D):
+ * ✅ 핵심:
  * 메시지 1개 처리 단위를 root span으로 감싼다.
- * 이렇게 하면 Datadog에서 trace 하나를 열었을 때
- *   - root: sqs.message.process (order-worker)
- *   - child: postgres 쿼리 spans (olive datastore)
- * 형태로 깔끔하게 보임.
+ * + DynamoDB serving counter를 원자적으로 +1 하고 trace tag로 남긴다.
  */
 async function handleMessage(m) {
-  // resource 이름은 큐/업무를 대표하게 잡는 게 좋음(가독성↑)
   const resource = "olive-dev-order-queue";
 
   return tracer.trace(
@@ -166,7 +213,6 @@ async function handleMessage(m) {
         const body = m.Body ? JSON.parse(m.Body) : {};
         console.log("[worker] received:", body);
 
-        // orderId를 태그로 달면 trace에서 검색/필터하기 좋음
         const oid = body?.orderId;
         if (oid) tracer.scope().active()?.setTag("order.id", oid);
 
@@ -190,7 +236,22 @@ async function handleMessage(m) {
         await markProcessed(orderId);
         console.log("[worker][db] processed:", orderId);
 
-        // 3) DB 성공 후에만 큐 메시지 삭제
+        // ✅ 3) DynamoDB 원자 카운터 증가 (DB 성공 후에 수행 권장)
+        const servedNumber = await incrementServingCounter();
+        console.log("[worker][ddb] serving_counter:", {
+          counter_id: SERVING_COUNTER_ID,
+          value: servedNumber,
+        });
+
+        // trace에서 바로 찾을 수 있게 태그로 남김
+        const span = tracer.scope().active();
+        if (span) {
+          span.setTag("serving.counter_id", SERVING_COUNTER_ID);
+          span.setTag("serving.value", servedNumber);
+          span.setTag("serving.table", SERVING_COUNTER_TABLE);
+        }
+
+        // 4) 모든 처리 성공 후에만 큐 메시지 삭제
         await sqs.send(
           new DeleteMessageCommand({
             QueueUrl: QUEUE_URL,
@@ -199,7 +260,6 @@ async function handleMessage(m) {
         );
         console.log("[worker] deleted message:", m.MessageId);
       } catch (err) {
-        // trace에 에러로 찍히도록 태그 세팅(안전빵)
         const span = tracer.scope().active();
         if (span) {
           span.setTag("error", err);
@@ -216,6 +276,9 @@ async function loop() {
   console.log("[worker] started");
   console.log(`[worker] region=${REGION}`);
   console.log(`[worker] queue=${QUEUE_URL}`);
+  console.log(`[worker] servingCounterTable=${SERVING_COUNTER_TABLE}`);
+  console.log(`[worker] servingCounterId=${SERVING_COUNTER_ID}`);
+  console.log(`[worker] servingCounterTtlSeconds=${SERVING_COUNTER_TTL_SECONDS}`);
   console.log(`[worker] processingDelayMs=${PROCESSING_DELAY_MS}`);
 
   while (true) {
