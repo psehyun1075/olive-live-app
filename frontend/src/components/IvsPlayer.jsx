@@ -10,6 +10,14 @@ export default function IvsPlayer({ playbackUrl }) {
   const [ready, setReady] = useState(false);
   const [err, setErr] = useState("");
 
+  function safePlay(player) {
+    try {
+      const r = player.play();
+      // 어떤 환경에서는 Promise가 아닐 수 있어서 방어
+      if (r && typeof r.catch === "function") r.catch(() => {});
+    } catch (_) {}
+  }
+
   useEffect(() => {
     setErr("");
     setReady(false);
@@ -25,18 +33,25 @@ export default function IvsPlayer({ playbackUrl }) {
       return;
     }
 
-    if (!IVSPlayer.isPlayerSupported) {
-      setErr("IVS Player is not supported in this browser");
-      return;
+    // isPlayerSupported는 함수로 호출하는 게 안전
+    if (typeof IVSPlayer.isPlayerSupported === "function") {
+      if (!IVSPlayer.isPlayerSupported()) {
+        setErr("IVS Player is not supported in this browser");
+        return;
+      }
     }
 
     const videoEl = videoRef.current;
+    if (!videoEl) {
+      setErr("Video element not found");
+      return;
+    }
+
     const player = IVSPlayer.create();
     playerRef.current = player;
 
     player.attachHTMLVideoElement(videoEl);
 
-    // Low-latency 재생은 브라우저 정책 때문에 보통 muted autoplay가 제일 안정적
     videoEl.muted = true;
     videoEl.playsInline = true;
     videoEl.autoplay = true;
@@ -44,8 +59,7 @@ export default function IvsPlayer({ playbackUrl }) {
 
     player.addEventListener(IVSPlayer.PlayerEventType.READY, () => {
       setReady(true);
-      // READY 때 play 시도 (정책상 실패할 수 있어서 catch)
-      player.play().catch(() => {});
+      safePlay(player);
     });
 
     player.addEventListener(IVSPlayer.PlayerEventType.ERROR, (e) => {
@@ -53,13 +67,8 @@ export default function IvsPlayer({ playbackUrl }) {
       setErr(`Player error: ${msg}`);
     });
 
-    // (옵션) 상태 로그
-    player.addEventListener(IVSPlayer.PlayerEventType.PLAYING, () => {
-      // console.log("[IVS] PLAYING");
-    });
-
     player.load(playbackUrl);
-    player.play().catch(() => {});
+    safePlay(player);
 
     return () => {
       try {
@@ -72,7 +81,8 @@ export default function IvsPlayer({ playbackUrl }) {
   return (
     <div className="w-full">
       <div className="rounded-2xl overflow-hidden bg-black">
-        <video ref={videoRef} className="w-full aspect-video" />
+        {/* Tailwind 환경 이슈 방지: 스타일로 16:9 고정 */}
+        <video ref={videoRef} className="w-full" style={{ aspectRatio: "16 / 9" }} />
       </div>
 
       <div className="mt-2 text-sm">
