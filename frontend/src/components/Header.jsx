@@ -10,7 +10,7 @@ export default function Header() {
           <img
             src={logo}
             alt="Olive Live"
-            className="h-15 w-15 rounded-full object-contain"
+            className="h-20 w-20 rounded-full object-contain"
           />
           <div className="leading-tight">
             {/* ✅ 타이틀도 약간 키움 */}
