@@ -1,3 +1,7 @@
+import p1Img from "../assets/p1.png";
+import p2Img from "../assets/p2.png";
+import p3Img from "../assets/p3.png";
+
 export const products = [
   {
     id: "p1",
@@ -6,6 +10,7 @@ export const products = [
     tag: "LIVE 특가",
     liveId: "beauty-king-01",
     liveTitle: "뷰티 킹 신제품 런칭 라이브",
+    image: p1Img,
   },
   {
     id: "p2",
@@ -14,6 +19,7 @@ export const products = [
     tag: "베스트",
     liveId: "beauty-king-02",
     liveTitle: "스킨케어 루틴 집중 라이브",
+    image: p2Img,
   },
   {
     id: "p3",
@@ -22,5 +28,7 @@ export const products = [
     tag: "가성비",
     liveId: "beauty-king-03",
     liveTitle: "데일리 케어 꿀템 라이브",
+    image: p3Img,
   },
 ];
+

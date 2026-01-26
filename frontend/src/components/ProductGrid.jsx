@@ -3,19 +3,25 @@ import { products } from "../data/products.js";
 function ProductCard({ p, onOrder, onLive }) {
   return (
     <div className="rounded-2xl border bg-white shadow-sm overflow-hidden">
-      <div className="h-40 bg-gray-100 flex items-center justify-center text-gray-400 text-sm">
-        상품 이미지
+      {/* 이미지 */}
+      <div className="relative h-44 bg-gray-100">
+        <img
+          src={p.image}
+          alt={p.name}
+          className="h-full w-full object-cover"
+          loading="lazy"
+        />
+        <div className="absolute left-3 top-3 text-xs px-2 py-1 rounded-full bg-white/90 backdrop-blur text-gray-800 border">
+          {p.tag}
+        </div>
       </div>
 
       <div className="p-4">
         <div className="flex items-center justify-between gap-2">
-          <div className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">
-            {p.tag}
-          </div>
           <div className="text-sm font-bold">{p.price}</div>
         </div>
 
-        <div className="mt-3 font-semibold">{p.name}</div>
+        <div className="mt-2 font-semibold">{p.name}</div>
         <div className="mt-1 text-sm text-gray-600 line-clamp-1">
           {p.liveTitle}
         </div>
