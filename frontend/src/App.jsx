@@ -8,6 +8,7 @@ import LiveModal from "./components/LiveModal.jsx";
 import Toast from "./components/Toast.jsx";
 import OrderList from "./components/OrderList.jsx";
 import { createOrder, getApiBase } from "./lib/api.js";
+import { getTabNickname } from "./lib/nickname.js"; // ✅ 추가
 
 export default function App() {
   const apiBase = useMemo(() => getApiBase(), []);
@@ -21,14 +22,14 @@ export default function App() {
   const [liveOpen, setLiveOpen] = useState(false);
   const [selectedLive, setSelectedLive] = useState(null);
 
+  // ✅ 탭마다 다른 닉네임 (sessionStorage 기반)
+  const [chatUser] = useState(() => getTabNickname("guest"));
+
   // ✅ IVS Playback URL (Vite env로 주입)
   const playbackUrl = import.meta.env.VITE_IVS_PLAYBACK_URL || "";
 
   // ✅ WebSocket URL (Vite env로 주입)
   const wsUrl = import.meta.env.VITE_WS_URL || "";
-
-  // ✅ 데모 유저 (나중에 로그인 유저로 바꾸면 됨)
-  const user = "sehyun";
 
   async function sendOrder(nextOrderId) {
     const oid = nextOrderId ?? orderId;
@@ -108,7 +109,7 @@ export default function App() {
 
       <footer className="border-t bg-white">
         <div className="max-w-6xl mx-auto px-6 py-6 text-sm text-gray-600">
-          ※ 본 화면은 과제용이며 실제 서비스와 무관합니다.
+          ※ 본 화면은 과제/데모용이며 실제 서비스와 무관합니다.
         </div>
       </footer>
 
@@ -121,8 +122,8 @@ export default function App() {
           onQuickOrder(p);
         }}
         playbackUrl={playbackUrl}
-        wsUrl={wsUrl}
-        user={user}
+        wsUrl={wsUrl}       // ✅ 추가
+        user={chatUser}     // ✅ 탭 닉네임 전달
       />
 
       <Toast
