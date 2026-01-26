@@ -10,12 +10,11 @@ export default function Header() {
           <img
             src={logo}
             alt="Olive Live"
-            className="h-12 w-12 rounded-full object-contain"
+            className="h-15 w-15 rounded-full object-contain"
           />
           <div className="leading-tight">
             {/* ✅ 타이틀도 약간 키움 */}
             <div className="text-lg font-extrabold">Olive Live</div>
-            <div className="text-xs text-gray-500">Live commerce demo</div>
           </div>
         </div>
 
