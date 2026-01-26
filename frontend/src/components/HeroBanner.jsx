@@ -9,7 +9,7 @@ export default function HeroBanner({ onGoOrder, onGoBest }) {
           <img
             src={heroBg}
             alt="Hero background"
-            className="w-full h-full object-contain"
+            className="w-full h-full object-cover"
             draggable={false}
           />
           {/* ✅ 가독성 오버레이 (필요 없으면 지워도 됨) */}
