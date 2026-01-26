@@ -4,7 +4,7 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b">
       {/* ✅ py-4 → py-6 : 헤더 높이 살짝 키움 */}
-      <div className="max-w-6xl mx-auto px-6 py-6 flex items-center gap-4">
+      <div className="max-w-6xl mx-auto px-6 py-4 flex items-center gap-4">
         <div className="flex items-center gap-3">
           {/* ✅ 로고 키우기: h-9 → h-12, 동그랗게/약간 또렷하게 */}
           <img
