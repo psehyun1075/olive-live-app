@@ -1,6 +1,7 @@
 import IvsPlayer from "./IvsPlayer.jsx";
+import LiveChat from "./LiveChat.jsx";
 
-export default function LiveModal({ open, live, onClose, onOrder, playbackUrl }) {
+export default function LiveModal({ open, live, onClose, onOrder, playbackUrl, wsUrl, user }) {
   if (!open || !live) return null;
 
   return (
@@ -23,6 +24,10 @@ export default function LiveModal({ open, live, onClose, onOrder, playbackUrl })
           {/* ✅ IVS Player */}
           <IvsPlayer playbackUrl={playbackUrl} />
 
+          {/* ✅ WebSocket 채팅 */}
+          <LiveChat wsUrl={wsUrl} user={user} />
+
+          {/* 상품 정보 / 주문 버튼 */}
           <div className="flex items-center justify-between gap-4">
             <div>
               <div className="font-semibold">{live.name}</div>

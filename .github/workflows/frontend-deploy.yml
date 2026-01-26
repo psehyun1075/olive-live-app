@@ -62,6 +62,7 @@ jobs:
           
           # ✅ IVS (추가)
           VITE_IVS_PLAYBACK_URL: ${{ secrets.VITE_IVS_PLAYBACK_URL }}
+          VITE_WS_URL: ${{ secrets.VITE_WS_URL }}
 
           # 버전
           VITE_APP_VERSION: ${{ github.sha }}

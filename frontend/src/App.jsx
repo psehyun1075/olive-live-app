@@ -24,6 +24,12 @@ export default function App() {
   // ✅ IVS Playback URL (Vite env로 주입)
   const playbackUrl = import.meta.env.VITE_IVS_PLAYBACK_URL || "";
 
+  // ✅ WebSocket URL (Vite env로 주입)
+  const wsUrl = import.meta.env.VITE_WS_URL || "";
+
+  // ✅ 데모 유저 (나중에 로그인 유저로 바꾸면 됨)
+  const user = "sehyun";
+
   async function sendOrder(nextOrderId) {
     const oid = nextOrderId ?? orderId;
     if (!oid) return;
@@ -102,7 +108,7 @@ export default function App() {
 
       <footer className="border-t bg-white">
         <div className="max-w-6xl mx-auto px-6 py-6 text-sm text-gray-600">
-          ※ 본 화면은 과제/데모용이며 실제 서비스와 무관합니다.
+          ※ 본 화면은 과제용이며 실제 서비스와 무관합니다.
         </div>
       </footer>
 
@@ -115,6 +121,8 @@ export default function App() {
           onQuickOrder(p);
         }}
         playbackUrl={playbackUrl}
+        wsUrl={wsUrl}
+        user={user}
       />
 
       <Toast
