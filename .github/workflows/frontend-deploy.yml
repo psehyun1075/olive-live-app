@@ -21,7 +21,7 @@ env:
   # Datadog meta (sourcemap 업로드에 사용)
   DD_SERVICE: olive-live-frontend
   DD_ENV: dev
-  R53_URL: https://www.psehyun.cloud
+  R53_URL: www.psehyun.cloud
 
 jobs:
   deploy:
