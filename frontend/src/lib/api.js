@@ -7,6 +7,7 @@ export function getApiBase() {
   return API_BASE;
 }
 
+
 /**
  * 공통 fetch 래퍼
  * - API_BASE 붙여서 절대 URL로 요청
