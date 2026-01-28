@@ -21,7 +21,7 @@ env:
   # Datadog meta (sourcemap 업로드에 사용)
   DD_SERVICE: olive-live-frontend
   DD_ENV: dev
-  CF_DOMAIN: d21hmdoocq4tl0.cloudfront.net
+  R53_URL: https://www.psehyun.cloud
 
 jobs:
   deploy:
@@ -46,7 +46,7 @@ jobs:
         working-directory: ${{ env.FRONTEND_DIR }}
         env:
           # ===== API =====
-          VITE_API_BASE_URL: https://${{ env.CF_DOMAIN }}
+          VITE_API_BASE_URL: https://${{ env.R53_URL }}
           VITE_ORIGIN_HEADER_NAME: x-olive-origin
           VITE_ORIGIN_HEADER_VALUE: olive-dev-only-9f3a2c
 
