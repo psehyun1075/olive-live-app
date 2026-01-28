@@ -18,6 +18,9 @@ const { Pool } = pg;
 const REGION = process.env.AWS_REGION || "ap-northeast-2";
 const QUEUE_URL = process.env.ORDER_QUEUE_URL;
 
+const ENV = process.env.ENV || "dev";
+const SERVICE_NAME = process.env.DD_SERVICE || process.env.SERVICE_NAME || "order-worker";
+
 // DynamoDB serving counter
 const SERVING_COUNTER_TABLE = process.env.SERVING_COUNTER_TABLE;
 const SERVING_COUNTER_ID = process.env.SERVING_COUNTER_ID || "event-001";
@@ -40,6 +43,26 @@ if (!DB_HOST || !DB_NAME || !DB_USER || !DB_PASSWORD) {
 if (!SERVING_COUNTER_TABLE) {
   console.error("ERROR: SERVING_COUNTER_TABLE env is required");
   process.exit(1);
+}
+
+// ==================
+// Analytics logger (JSON one-line)
+// ==================
+function logEvent(evt) {
+  const base = {
+    ts: new Date().toISOString(),
+    env: ENV,
+    service: SERVICE_NAME,
+  };
+  console.log(JSON.stringify({ ...base, ...evt }));
+}
+function logError(evt) {
+  const base = {
+    ts: new Date().toISOString(),
+    env: ENV,
+    service: SERVICE_NAME,
+  };
+  console.error(JSON.stringify({ ...base, ...evt }));
 }
 
 const sqs = new SQSClient({ region: REGION });
@@ -73,10 +96,6 @@ async function sleep(ms) {
 
 /**
  * ✅ DynamoDB 원자 카운터 증가
- * - value: if_not_exists(value, 0) + 1
- * - updated_at: epoch seconds
- * - expires_at(TTL): now + SERVING_COUNTER_TTL_SECONDS
- * return: 증가된 value (Number)
  */
 async function incrementServingCounter() {
   const now = Math.floor(Date.now() / 1000);
@@ -188,9 +207,7 @@ async function markProcessed(orderId) {
 }
 
 /**
- * ✅ 핵심:
- * 메시지 1개 처리 단위를 root span으로 감싼다.
- * + DynamoDB serving counter를 원자적으로 +1 하고 trace tag로 남긴다.
+ * ✅ 메시지 1개 처리 단위를 root span으로 감싼다.
  */
 async function handleMessage(m) {
   const resource = "olive-dev-order-queue";
@@ -209,56 +226,52 @@ async function handleMessage(m) {
       },
     },
     async () => {
+      const start = Date.now();
+      let orderId = null;
+
       try {
         const body = m.Body ? JSON.parse(m.Body) : {};
-        console.log("[worker] received:", body);
+        orderId = body?.orderId || null;
 
-        const oid = body?.orderId;
-        if (oid) tracer.scope().active()?.setTag("order.id", oid);
-
-        // ===== DLQ 데모용 강제 실패 (필요할 때만 주석 해제) =====
-        /*
-        if (oid && oid.startsWith("fail-")) {
-          console.error("[worker] FORCED_FAIL_FOR_DLQ_DEMO:", oid);
-          throw new Error("FORCED_FAIL_FOR_DLQ_DEMO");
-        }
-        */
-        // ========================================================
+        const span = tracer.scope().active();
+        if (orderId && span) span.setTag("order.id", orderId);
 
         // 1) RECEIVED 저장/이벤트
-        const orderId = await upsertReceived(body);
-        console.log("[worker][db] received:", orderId);
+        const savedOrderId = await upsertReceived(body);
 
         // (데모용) 처리시간 시뮬 (트랜잭션 밖)
         if (PROCESSING_DELAY_MS > 0) await sleep(PROCESSING_DELAY_MS);
 
         // 2) PROCESSED로 상태 전환/이벤트
-        await markProcessed(orderId);
-        console.log("[worker][db] processed:", orderId);
+        await markProcessed(savedOrderId);
 
-        // ✅ 3) DynamoDB 원자 카운터 증가 (DB 성공 후에 수행 권장)
+        // 3) DynamoDB 원자 카운터 증가
         const servedNumber = await incrementServingCounter();
-        console.log("[worker][ddb] serving_counter:", {
-          counter_id: SERVING_COUNTER_ID,
-          value: servedNumber,
-        });
 
-        // trace에서 바로 찾을 수 있게 태그로 남김
-        const span = tracer.scope().active();
+        // trace 태그
         if (span) {
           span.setTag("serving.counter_id", SERVING_COUNTER_ID);
           span.setTag("serving.value", servedNumber);
           span.setTag("serving.table", SERVING_COUNTER_TABLE);
         }
 
-        // 4) 모든 처리 성공 후에만 큐 메시지 삭제
+        // ✅ 분석용 핵심 이벤트(처리 완료)
+        logEvent({
+          event_type: "ORDER_PROCESSED",
+          order_id: savedOrderId,
+          sqs_message_id: m.MessageId || null,
+          serving_value: servedNumber,
+          latency_ms: Date.now() - start,
+        });
+
+        // 4) 성공 후에만 큐 메시지 삭제
         await sqs.send(
           new DeleteMessageCommand({
             QueueUrl: QUEUE_URL,
             ReceiptHandle: m.ReceiptHandle,
           })
         );
-        console.log("[worker] deleted message:", m.MessageId);
+
       } catch (err) {
         const span = tracer.scope().active();
         if (span) {
@@ -266,6 +279,16 @@ async function handleMessage(m) {
           span.setTag("error.type", err?.name || "Error");
           span.setTag("error.msg", err?.message || String(err));
         }
+
+        // ✅ 분석용 실패 이벤트
+        logError({
+          event_type: "ORDER_FAILED",
+          order_id: orderId,
+          sqs_message_id: m.MessageId || null,
+          error: err?.message || String(err),
+          latency_ms: Date.now() - start,
+        });
+
         throw err;
       }
     }
